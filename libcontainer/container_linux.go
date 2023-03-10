@@ -1436,6 +1436,39 @@ func (c *Container) Restore(process *Process, criuOpts *CriuOpts) error {
 		},
 	}
 
+	// start a lazy page daemon
+	if criuOpts.LazyPages {
+		// Create a new CRIU lazy page daemon
+		// daemon := criu.NewLazyPagesDaemon()
+		// Set the function to be executed when the daemon starts
+		// daemon.StartFunc = startDaemon
+		// Start the daemon
+		//if err := daemon.Start(); err != nil {
+		//	fmt.Fprintf(os.Stderr, "Failed to start lazy page daemon: %v\n", err)
+		//	os.Exit(1)
+		//}
+
+		logrus.Infof("imagedir %s", imageDir.Name())
+		command := strings.Join([]string{"criu", "lazy-pages", "-D", imageDir.Name()}, " ")
+		done := make(chan error)
+		go func() {
+			cmd := exec.Command("/bin/bash", "-c", command)
+			err := cmd.Start()
+			if err != nil {
+				done <- err
+				return
+			}
+			done <- nil
+		}()
+
+		err := <-done
+		if err != nil {
+			fmt.Sprintf("failed to start lazy page daemon: %v, command %v", err, command)
+		}
+		req.Opts.LazyPages = proto.Bool(true)
+		req.Opts.ImagesDirFd = proto.Int32(int32(imageDir.Fd()))
+	}
+
 	if criuOpts.LsmProfile != "" {
 		// CRIU older than 3.16 has a bug which breaks the possibility
 		// to set a different LSM profile.
